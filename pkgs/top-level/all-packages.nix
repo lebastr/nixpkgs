@@ -860,6 +860,8 @@ in
 
   autojump = callPackage ../tools/misc/autojump { };
 
+  automysqlbackup = callPackage ../tools/backup/automysqlbackup { };
+
   autorandr = callPackage ../tools/misc/autorandr {};
 
   avahi = callPackage ../development/libraries/avahi (config.avahi or {});
@@ -934,6 +936,8 @@ in
     metricbeat5
     packetbeat5;
 
+  journalbeat5 = callPackage ../tools/system/journalbeat { };
+
   inherit (callPackages ../misc/logging/beats/6.x.nix {
     # XXX: this is failing with Go 1.12. Error is related to cgo, an
     # update to this package might fix it.
@@ -960,6 +964,7 @@ in
   heartbeat = heartbeat6;
   metricbeat = metricbeat6;
   packetbeat = packetbeat6;
+  journalbeat = journalbeat5;
 
   bfr = callPackage ../tools/misc/bfr { };
 
@@ -2514,9 +2519,9 @@ in
   evemu = callPackage ../tools/system/evemu { };
 
   # The latest version used by elasticsearch, logstash, kibana and the the beats from elastic.
-  elk5Version = "5.6.9";
-  elk6Version = "6.7.1";
-  elk7Version = "7.0.0";
+  elk5Version = "5.6.16";
+  elk6Version = "6.7.2";
+  elk7Version = "7.0.1";
 
   elasticsearch5 = callPackage ../servers/search/elasticsearch/5.x.nix { };
   elasticsearch6 = callPackage ../servers/search/elasticsearch/6.x.nix { };
@@ -2531,8 +2536,19 @@ in
   elasticsearch-oss = elasticsearch6-oss;
 
   elasticsearchPlugins = recurseIntoAttrs (
-    callPackage ../servers/search/elasticsearch/plugins.nix { }
+    callPackage ../servers/search/elasticsearch/plugins.nix {
+      elasticsearch = elasticsearch-oss;
+    }
   );
+  elasticsearch5Plugins = elasticsearchPlugins.override {
+    elasticsearch = elasticsearch5;
+  };
+  elasticsearch6Plugins = elasticsearchPlugins.override {
+    elasticsearch = elasticsearch6-oss;
+  };
+  elasticsearch7Plugins = elasticsearchPlugins.override {
+    elasticsearch = elasticsearch7-oss;
+  };
 
   elasticsearch-curator = with (python3.override {
     packageOverrides = self: super: {
@@ -3311,6 +3327,8 @@ in
 
   halide = callPackage ../development/compilers/halide { };
 
+  ham = pkgs.perlPackages.ham;
+
   hardinfo = callPackage ../tools/system/hardinfo { };
 
   hdapsd = callPackage ../os-specific/linux/hdapsd { };
@@ -3633,8 +3651,6 @@ in
   go-jira = callPackage ../applications/misc/go-jira { };
 
   john = callPackage ../tools/security/john { };
-
-  journalbeat = callPackage ../tools/system/journalbeat { };
 
   journaldriver = callPackage ../tools/misc/journaldriver { };
 
@@ -5588,6 +5604,8 @@ in
 
   sonata = callPackage ../applications/audio/sonata { };
 
+  soundkonverter = kdeApplications.callPackage ../applications/audio/soundkonverter {};
+
   souper = callPackage ../development/compilers/souper { };
 
   sparsehash = callPackage ../development/libraries/sparsehash { };
@@ -6354,7 +6372,11 @@ in
   waf = callPackage ../development/tools/build-managers/waf { python = python3; };
   wafHook = makeSetupHook {
     deps = [ python ];
-    substitutions = { inherit waf; };
+    substitutions = {
+      inherit waf;
+      crossFlags = lib.optionalString (stdenv.hostPlatform != stdenv.targetPlatform)
+        ''--cross-compile "--cross-execute=${stdenv.targetPlatform.emulator pkgs}"'';
+    };
   } ../development/tools/build-managers/waf/setup-hook.sh;
 
   wakelan = callPackage ../tools/networking/wakelan { };
@@ -6843,6 +6865,7 @@ in
 
   gcc7Stdenv = overrideCC gccStdenv gcc7;
   gcc8Stdenv = overrideCC gccStdenv gcc8;
+  gcc9Stdenv = overrideCC gccStdenv gcc9;
 
   wrapCCMulti = cc:
     if stdenv.targetPlatform.system == "x86_64-linux" then let
@@ -6983,6 +7006,17 @@ in
   }));
 
   gcc8 = lowPrio (wrapCC (callPackage ../development/compilers/gcc/8 {
+    inherit noSysDirs;
+
+    # PGO seems to speed up compilation by gcc by ~10%, see #445 discussion
+    profiledCompiler = with stdenv; (!isDarwin && (isi686 || isx86_64));
+
+    libcCross = if stdenv.targetPlatform != stdenv.buildPlatform then libcCross else null;
+
+    isl = if !stdenv.isDarwin then isl_0_17 else null;
+  }));
+
+  gcc9 = lowPrio (wrapCC (callPackage ../development/compilers/gcc/9 {
     inherit noSysDirs;
 
     # PGO seems to speed up compilation by gcc by ~10%, see #445 discussion
@@ -7979,8 +8013,6 @@ in
   }));
 
   ocropus = callPackage ../applications/misc/ocropus { };
-
-  inherit (callPackages ../development/interpreters/perl {}) perl528 perldevel;
 
   pachyderm = callPackage ../applications/networking/cluster/pachyderm { };
 
@@ -13416,19 +13448,14 @@ in
 
   ### DEVELOPMENT / PERL MODULES
 
-  # the latest Maint version
-  perl528Packages = recurseIntoAttrs (callPackage ./perl-packages.nix {
-    perl = perl528;
-    overrides = (config.perlPackageOverrides or (p: {})) pkgs;
-  });
-  # the latest Devel version
-  perldevelPackages = recurseIntoAttrs (callPackage ./perl-packages.nix {
-    perl = perldevel;
-    overrides = (config.perlPackageOverrides or (p: {})) pkgs;
-  });
+  perlInterpreters = callPackages ../development/interpreters/perl {};
+  inherit (perlInterpreters) perl528 perldevel;
 
+  perl528Packages = recurseIntoAttrs perl528.pkgs;
+  perldevelPackages = perldevel.pkgs;
+
+  perl = perl528;
   perlPackages = perl528Packages;
-  inherit (perlPackages) perl;
 
   ack = perlPackages.ack;
 
@@ -14702,6 +14729,15 @@ in
     kernelPatches =
       [ kernelPatches.bridge_stp_helper
         kernelPatches.modinst_arg_list_too_long
+        kernelPatches.export_kernel_fpu_functions
+      ];
+  };
+
+  linux_5_1 = callPackage ../os-specific/linux/kernel/linux-5.1.nix {
+    kernelPatches =
+      [ kernelPatches.bridge_stp_helper
+        kernelPatches.modinst_arg_list_too_long
+        kernelPatches.export_kernel_fpu_functions
       ];
   };
 
@@ -14709,6 +14745,7 @@ in
     kernelPatches = [
       kernelPatches.bridge_stp_helper
       kernelPatches.modinst_arg_list_too_long
+      kernelPatches.export_kernel_fpu_functions
     ];
   };
 
@@ -14886,7 +14923,7 @@ in
   linux = linuxPackages.kernel;
 
   # Update this when adding the newest kernel major version!
-  linuxPackages_latest = linuxPackages_5_0;
+  linuxPackages_latest = linuxPackages_5_1;
   linux_latest = linuxPackages_latest.kernel;
 
   # Build the kernel modules for the some of the kernels.
@@ -14897,6 +14934,8 @@ in
   linuxPackages_4_14 = recurseIntoAttrs (linuxPackagesFor pkgs.linux_4_14);
   linuxPackages_4_19 = recurseIntoAttrs (linuxPackagesFor pkgs.linux_4_19);
   linuxPackages_5_0 = recurseIntoAttrs (linuxPackagesFor pkgs.linux_5_0);
+  linuxPackages_5_1 = recurseIntoAttrs (linuxPackagesFor pkgs.linux_5_1);
+
   # When adding to this list:
   # - Update linuxPackages_latest to the latest version
   # - Update the rev in ../os-specific/linux/kernel/linux-libre.nix to the latest one.
@@ -18020,7 +18059,13 @@ in
 
   kipi-plugins = libsForQt5.callPackage ../applications/graphics/kipi-plugins { };
 
-  kitty = callPackage ../applications/misc/kitty { };
+  kitty = callPackage ../applications/misc/kitty {
+    harfbuzz = if stdenv.isDarwin then harfbuzz.override {
+      withCoreText = true;
+    } else harfbuzz;
+    inherit (darwin) cf-private;
+    inherit (darwin.apple_sdk.frameworks) Cocoa CoreGraphics Foundation IOKit Kernel OpenGL;
+  };
 
   kiwix = callPackage ../applications/misc/kiwix { };
 
@@ -18059,7 +18104,11 @@ in
 
   kubetail = callPackage ../applications/networking/cluster/kubetail { } ;
 
-  kupfer = callPackage ../applications/misc/kupfer { };
+  kupfer = callPackage ../applications/misc/kupfer {
+    # using python36 as there appears to be a waf issue with python37
+    # see https://github.com/NixOS/nixpkgs/issues/60498
+    python3Packages = python36Packages;
+  };
 
   lame = callPackage ../development/libraries/lame { };
 
@@ -19533,6 +19582,10 @@ in
     bison = bison2;
   };
 
+  stretchly = callPackage ../applications/misc/stretchly {
+    inherit (gnome2) GConf;
+  };
+
   stumpish = callPackage ../applications/window-managers/stumpish {};
 
   stumpwm = callPackage ../applications/window-managers/stumpwm {
@@ -20357,6 +20410,8 @@ in
 
   xkblayout-state = callPackage ../applications/misc/xkblayout-state { };
 
+  xmobar = haskellPackages.xmobar;
+
   xmonad-log = callPackage ../tools/misc/xmonad-log { };
 
   xmonad-with-packages = callPackage ../applications/window-managers/xmonad/wrapper.nix {
@@ -20862,12 +20917,11 @@ in
 
   minecraft = callPackage ../games/minecraft { };
 
-  minecraft-server = minecraft-server_1_13_2;
+  minecraft-server = minecraft-server_1_14;
 
   inherit (callPackages ../games/minecraft-server { })
+    minecraft-server_1_14
     minecraft-server_1_13_2
-    minecraft-server_1_13_1
-    minecraft-server_1_13_0
     minecraft-server_1_12_2;
 
   moon-buggy = callPackage ../games/moon-buggy {};
@@ -23372,5 +23426,4 @@ in
   newlibCross = callPackage ../development/misc/newlib {
     stdenv = crossLibcStdenv;
   };
-
 }

@@ -485,6 +485,11 @@
     github = "avnik";
     name = "Alexander V. Nikolaev";
   };
+  aw = {
+    email = "aw-nixos@meterriblecrew.net";
+    github = "herrwiese";
+    name = "Andreas Wiese";
+  };
   aycanirican = {
     email = "iricanaycan@gmail.com";
     github = "aycanirican";
@@ -1761,6 +1766,11 @@
     github = "Gerschtli";
     name = "Tobias Happ";
   };
+  ggpeti = {
+    email = "ggpeti@gmail.com";
+    github = "ggpeti";
+    name = "Peter Ferenczy";
+  };
   gilligan = {
     email = "tobias.pflug@gmail.com";
     github = "gilligan";
@@ -2470,7 +2480,7 @@
   klntsky = {
     email = "klntsky@gmail.com";
     name = "Vladimir Kalnitsky";
-    github = "8084";
+    github = "klntsky";
   };
   kmeakin = {
     email = "karlwfmeakin@gmail.com";
@@ -2487,6 +2497,11 @@
     email = "nikola@knezevic.co";
     github = "knl";
     name = "Nikola Knežević";
+  };
+  kolaente = {
+    email = "k@knt.li";
+    github = "kolaente";
+    name = "Konrad Langenberg";
   };
   konimex = {
     email = "herdiansyah@netc.eu";
